@@ -122,9 +122,12 @@ export default function SettingsScreen() {
           body: "Push notifications are working perfectly.",
           sound: true,
         },
-        trigger: null, // Send immediately
+        trigger: {
+          type: 'timeInterval',
+          seconds: 2, // Send in 2 seconds
+        } as any,
       });
-      Alert.alert("Sent", "Check your phone for the notification!");
+      Alert.alert("Sent", "Check your phone in 2 seconds!");
     } catch (e) {
       Alert.alert("Error", "Could not send notification. Check permissions in your device settings.");
     }

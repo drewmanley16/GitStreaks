@@ -36,19 +36,24 @@ export async function scheduleDailyReminder() {
   await Notifications.cancelAllScheduledNotificationsAsync();
 
   // Schedule a local notification for 8:00 PM every day
-  // Using the updated trigger format for Expo SDK 53+
   try {
+    // Determine the correct trigger format based on what's available
+    const trigger: any = {
+      hour: 20,
+      minute: 0,
+      repeats: true,
+    };
+
+    // Newer Expo versions want a 'type' property
+    trigger.type = 'calendar';
+
     await Notifications.scheduleNotificationAsync({
       content: {
         title: "🔥 Streak at Risk!",
         body: "Don't forget to push some code to save your streak today!",
         sound: true,
       },
-      trigger: {
-        type: Notifications.SchedulableNotificationTriggerInputTypes.DAILY,
-        hour: 20,
-        minute: 0,
-      } as any, // Cast to any to bypass strict type check if needed in some environments
+      trigger,
     });
     console.log('DEBUG: Notification scheduled successfully');
   } catch (error) {
