@@ -62,25 +62,29 @@ export default function HomeScreen() {
         setCalendarDays(allDays.slice(-21));
       }
 
-      // Fetch Recent Commit History (REST Events)
-      const eventsResponse = await fetch(`https://api.github.com/users/${userData.login}/events`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const eventsData = await eventsResponse.json();
+      // Fetch Recent Commit History (Search API for real commit data)
+      const searchResponse = await fetch(
+        `https://api.github.com/search/commits?q=author:${userData.login}&sort=author-date&order=desc`, 
+        {
+          headers: { 
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/vnd.github.v3+json'
+          },
+        }
+      );
+      const searchData = await searchResponse.json();
       
-      const commits = eventsData
-        .filter((event: any) => event.type === 'PushEvent')
-        .flatMap((event: any) => 
-          event.payload.commits.map((commit: any) => ({
-            repo: event.repo.name.split('/')[1],
-            message: commit.message,
-            date: new Date(event.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-            sha: commit.sha.substring(0, 7)
-          }))
-        )
-        .slice(0, 10); // Show last 10 commits
-
-      setRecentCommits(commits);
+      if (searchData.items && Array.isArray(searchData.items)) {
+        const commits = searchData.items.map((item: any) => ({
+          repo: item.repository.name,
+          message: item.commit.message,
+          date: new Date(item.commit.author.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+          sha: item.sha.substring(0, 7)
+        })).slice(0, 10);
+        setRecentCommits(commits);
+      } else {
+        setRecentCommits([]);
+      }
 
     } catch (error) {
       console.error('DEBUG: Fetch Error', error);
