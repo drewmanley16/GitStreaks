@@ -3,9 +3,8 @@ import { exchangeCodeAsync, makeRedirectUri, useAuthRequest } from 'expo-auth-se
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as React from 'react';
-import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
-
-import { ThemedText } from '@/components/themed-text';
+import { ActivityIndicator, StyleSheet, TouchableOpacity, View, Text } from 'react-native';
+import { Logo } from '@/components/Logo';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -63,10 +62,12 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <ThemedText style={styles.title}>Git Streaks</ThemedText>
-        <ThemedText style={styles.subtitle}>
-          Track your GitHub contributions and streaks with friends.
-        </ThemedText>
+        <View style={styles.logoWrapper}>
+          <Logo size={48} />
+        </View>
+        <Text style={styles.subtitle}>
+          Secure your momentum. Track your GitHub contributions and streaks with the elite dev crew.
+        </Text>
 
         <TouchableOpacity
           disabled={!request}
@@ -76,9 +77,9 @@ export default function LoginScreen() {
           style={[styles.button, !request && styles.buttonDisabled]}
         >
           {request ? (
-            <ThemedText style={styles.buttonText}>Login with GitHub</ThemedText>
+            <Text style={styles.buttonText}>Authenticate via GitHub</Text>
           ) : (
-            <ActivityIndicator color="#f1e05a" />
+            <ActivityIndicator color="#0d1117" />
           )}
         </TouchableOpacity>
       </View>
@@ -96,12 +97,8 @@ const styles = StyleSheet.create({
   content: {
     alignItems: 'center',
   },
-  title: {
-    color: '#ffffff',
-    fontSize: 42,
-    fontWeight: '800',
-    marginBottom: 12,
-    textAlign: 'center',
+  logoWrapper: {
+    marginBottom: 24,
   },
   subtitle: {
     color: '#8b949e',

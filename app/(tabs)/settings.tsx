@@ -173,9 +173,11 @@ export default function SettingsScreen() {
               const isEarned = earnedAchievements.some(a => a.id === achievement.id);
               return (
                 <View key={achievement.id} style={[styles.achievementItem, !isEarned && styles.achievementLocked]}>
-                  <Text style={[styles.achievementIcon, !isEarned && styles.grayscale]}>
-                    {achievement.icon}
-                  </Text>
+                  <View style={[styles.achievementBadge, { borderColor: isEarned ? achievement.color : '#30363d' }]}>
+                    <Text style={[styles.achievementSymbol, { color: isEarned ? achievement.color : '#8b949e' }]}>
+                      {achievement.symbol}
+                    </Text>
+                  </View>
                   <Text style={[styles.achievementTitle, !isEarned && styles.textMuted]}>
                     {achievement.title}
                   </Text>
@@ -299,13 +301,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#0d1117',
     borderStyle: 'dashed',
   },
-  achievementIcon: {
-    fontSize: 28,
+  achievementBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 8,
+  },
+  achievementSymbol: {
+    fontSize: 10,
+    fontWeight: '900',
   },
   achievementTitle: {
     color: '#ffffff',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 'bold',
     textAlign: 'center',
   },
