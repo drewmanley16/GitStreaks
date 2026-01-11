@@ -127,6 +127,7 @@ export default function AnalyticsScreen() {
           issues: data.contributionsCollection.totalIssueContributions,
           repos: data.contributionsCollection.totalRepositoryContributions,
           graphData,
+          startDate: fromDate,
           impact: {
             additions: totalAdditions,
             deletions: totalDeletions,
@@ -165,6 +166,22 @@ export default function AnalyticsScreen() {
     const screenWidth = Dimensions.get('window').width - 48; // Padding
     const barWidth = (screenWidth - (data.length * 2)) / data.length;
 
+    const formatDate = (date: Date) => {
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    };
+
+    const getMarkers = () => {
+      const start = new Date(analytics.startDate);
+      const end = new Date();
+      const mid = new Date(start.getTime() + (end.getTime() - start.getTime()) / 2);
+      
+      if (period === 'day') return [formatDate(start), '12 PM', 'Now'];
+      if (period === 'week') return [formatDate(start), formatDate(mid), 'Today'];
+      return [formatDate(start), formatDate(mid), 'Today'];
+    };
+
+    const markers = getMarkers();
+
     return (
       <View style={styles.graphContainer}>
         <View style={styles.graphBars}>
@@ -184,8 +201,9 @@ export default function AnalyticsScreen() {
           ))}
         </View>
         <View style={styles.graphLabels}>
-          <Text style={styles.graphLabel}>Earlier</Text>
-          <Text style={styles.graphLabel}>Today</Text>
+          <Text style={styles.graphLabel}>{markers[0]}</Text>
+          <Text style={styles.graphLabel}>{markers[1]}</Text>
+          <Text style={styles.graphLabel}>{markers[2]}</Text>
         </View>
       </View>
     );
@@ -397,11 +415,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 12,
+    paddingHorizontal: 4,
   },
   graphLabel: {
-    color: '#30363d',
-    fontSize: 10,
+    color: '#8b949e',
+    fontSize: 9,
     fontWeight: 'bold',
+    textAlign: 'center',
   },
   grid: {
     flexDirection: 'row',
