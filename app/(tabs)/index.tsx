@@ -1,0 +1,308 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState, useCallback } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, View, RefreshControl, Text } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+export default function HomeScreen() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
+  const [calendarDays, setCalendarDays] = useState<any[]>([]);
+
+  const fetchGitHubData = async (accessToken: string) => {
+    console.log('DEBUG: Starting fetchGitHubData');
+    try {
+      const userResponse = await fetch('https://api.github.com/user', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const userData = await userResponse.json();
+      setUser(userData);
+      await AsyncStorage.setItem('myUsername', userData.login);
+
+      const query = `
+        query($userName:String!) { 
+          user(login: $userName) {
+            contributionsCollection {
+              contributionCalendar {
+                totalContributions
+                weeks {
+                  contributionDays {
+                    contributionCount
+                    date
+                    color
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      const gqlResponse = await fetch('https://api.github.com/graphql', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+          variables: { userName: userData.login },
+        }),
+      });
+
+      const gqlData = await gqlResponse.json();
+      const calendar = gqlData.data?.user?.contributionsCollection?.contributionCalendar;
+      if (calendar) {
+        processStats(calendar);
+        const allDays = calendar.weeks.flatMap((w: any) => w.contributionDays);
+        setCalendarDays(allDays.slice(-21));
+      }
+    } catch (error) {
+      console.error('DEBUG: Fetch Error', error);
+    }
+  };
+
+  const processStats = (calendar: any) => {
+    const allDays = calendar.weeks.flatMap((w: any) => w.contributionDays).reverse();
+    const now = new Date();
+    const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    
+    let todayCount = 0;
+    let weekCount = 0;
+    const todayObj = allDays.find((d: any) => d.date === todayStr);
+    todayCount = todayObj?.contributionCount || 0;
+
+    let streakDays = 0;
+    let streakFound = false;
+
+    for (let i = 0; i < allDays.length; i++) {
+      const day = allDays[i];
+      if (!streakFound) {
+        if (day.contributionCount > 0) {
+          streakFound = true;
+          streakDays = 1;
+        } else {
+          if (day.date === todayStr) continue;
+          else break;
+        }
+      } else {
+        if (day.contributionCount > 0) streakDays++;
+        else break;
+      }
+    }
+
+    allDays.slice(0, 7).forEach((day: any) => {
+      weekCount += day.contributionCount;
+    });
+
+    setStats({
+      total: calendar.totalContributions,
+      week: weekCount,
+      day: todayCount,
+      streak: streakDays,
+    });
+  };
+
+  const checkLogin = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const savedToken = await AsyncStorage.getItem('userToken');
+      if (!savedToken) {
+        router.replace('/login');
+      } else {
+        await fetchGitHubData(savedToken);
+      }
+    } catch (e) {
+      console.error('DEBUG: Token Error', e);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkLogin();
+  }, [checkLogin]);
+
+  const onRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    checkLogin();
+  }, [checkLogin]);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#f1e05a" />
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor="#f1e05a" />
+        }
+      >
+        <View style={styles.header}>
+          <Text style={styles.username}>@{user?.login || 'User'}</Text>
+          <Text style={styles.subGreeting}>Developer Activity Dashboard</Text>
+        </View>
+        
+        <View style={styles.streakCard}>
+          <Text style={styles.streakLabel}>CURRENT STREAK</Text>
+          <Text style={styles.streakValue}>{stats?.streak ?? '-'}</Text>
+          <Text style={styles.streakDays}>Days in a row</Text>
+        </View>
+
+        <View style={styles.heatmapCard}>
+          <Text style={styles.cardLabel}>LAST 21 DAYS</Text>
+          <View style={styles.grid}>
+            {calendarDays.map((day, i) => (
+              <View 
+                key={i} 
+                style={[
+                  styles.square, 
+                  { 
+                    backgroundColor: day.contributionCount > 0 ? '#f1e05a' : '#30363d', 
+                    opacity: day.contributionCount > 0 ? Math.min(0.3 + (day.contributionCount * 0.2), 1) : 1 
+                  }
+                ]} 
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.statsGrid}>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>TODAY</Text>
+            <Text style={styles.statValue}>{stats?.day ?? 0}</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>WEEK</Text>
+            <Text style={styles.statValue}>{stats?.week ?? 0}</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>YEAR</Text>
+            <Text style={styles.statValue}>{stats?.total ?? 0}</Text>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0d1117',
+  },
+  contentContainer: {
+    padding: 24,
+    paddingTop: 40, // Generous padding to prevent cutting
+    paddingBottom: 40,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0d1117',
+  },
+  header: {
+    marginBottom: 32,
+  },
+  username: {
+    color: '#ffffff',
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  subGreeting: {
+    color: '#8b949e',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  streakCard: {
+    backgroundColor: '#161b22',
+    padding: 40,
+    borderRadius: 24,
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#30363d',
+  },
+  streakLabel: {
+    color: '#8b949e',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    letterSpacing: 1.5,
+  },
+  streakValue: {
+    color: '#f1e05a',
+    fontSize: 84,
+    fontWeight: 'bold',
+  },
+  streakDays: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  heatmapCard: {
+    backgroundColor: '#161b22',
+    padding: 20,
+    borderRadius: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#30363d',
+  },
+  cardLabel: {
+    color: '#8b949e',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    letterSpacing: 1.5,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  square: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.03)',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statBox: {
+    backgroundColor: '#161b22',
+    width: '31%',
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#30363d',
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: 10,
+    color: '#8b949e',
+    fontWeight: 'bold',
+    marginBottom: 6,
+    letterSpacing: 1,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+});

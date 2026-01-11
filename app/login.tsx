@@ -3,14 +3,12 @@ import { exchangeCodeAsync, makeRedirectUri, useAuthRequest } from 'expo-auth-se
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as React from 'react';
-import { StyleSheet, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 
 WebBrowser.maybeCompleteAuthSession();
 
-// Endpoint
 const discovery = {
   authorizationEndpoint: 'https://github.com/login/oauth/authorize',
   tokenEndpoint: 'https://github.com/login/oauth/access_token',
@@ -19,9 +17,6 @@ const discovery = {
 
 export default function LoginScreen() {
   const router = useRouter();
-
-  // NOTE: In a real app, Client ID and Secret should be managed via environment variables.
-  // The token exchange should ideally happen on a secure backend to keep the Client Secret private.
   const clientId = 'Ov23lilG9wGRGMphXgtg';
   const clientSecret = 'e3e4b92381ba82862496a116e62c72fac21a0767';
 
@@ -32,6 +27,7 @@ export default function LoginScreen() {
       clientId,
       scopes: ['user', 'repo'],
       redirectUri,
+      usePKCE: false,
     },
     discovery
   );
@@ -65,59 +61,70 @@ export default function LoginScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <ThemedText type="title">GitHub Streaks</ThemedText>
-      <ThemedText style={styles.subtitle}>
-        Connect your GitHub account to track your contribution streaks and stay motivated.
-      </ThemedText>
+    <View style={styles.container}>
+      <View style={styles.content}>
+        <ThemedText style={styles.title}>Git Streaks</ThemedText>
+        <ThemedText style={styles.subtitle}>
+          Track your GitHub contributions and streaks with friends.
+        </ThemedText>
 
-      <TouchableOpacity
-        disabled={!request}
-        onPress={() => {
-          promptAsync();
-        }}
-        style={[styles.button, !request && styles.buttonDisabled]}
-      >
-        <ThemedText style={styles.buttonText}>Connect with GitHub</ThemedText>
-      </TouchableOpacity>
-    </ThemedView>
+        <TouchableOpacity
+          disabled={!request}
+          onPress={() => {
+            promptAsync();
+          }}
+          style={[styles.button, !request && styles.buttonDisabled]}
+        >
+          {request ? (
+            <ThemedText style={styles.buttonText}>Login with GitHub</ThemedText>
+          ) : (
+            <ActivityIndicator color="#f1e05a" />
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
+    backgroundColor: '#0d1117',
     justifyContent: 'center',
-    padding: 30,
+    padding: 40,
+  },
+  content: {
+    alignItems: 'center',
+  },
+  title: {
+    color: '#ffffff',
+    fontSize: 42,
+    fontWeight: '800',
+    marginBottom: 12,
+    textAlign: 'center',
   },
   subtitle: {
+    color: '#8b949e',
     fontSize: 16,
     textAlign: 'center',
-    marginTop: 15,
-    marginBottom: 40,
-    opacity: 0.8,
     lineHeight: 24,
+    marginBottom: 48,
+    maxWidth: 280,
   },
   button: {
-    backgroundColor: '#24292e',
+    backgroundColor: '#f1e05a',
     paddingHorizontal: 32,
     paddingVertical: 16,
     borderRadius: 12,
     width: '100%',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   buttonText: {
-    color: '#ffffff',
-    fontSize: 18,
+    color: '#0d1117',
+    fontSize: 16,
     fontWeight: '700',
   },
 });
