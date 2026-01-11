@@ -373,18 +373,19 @@ const styles = StyleSheet.create({
   statBox: {
     backgroundColor: '#161b22',
     width: '31%',
-    padding: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 8,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#30363d',
     alignItems: 'center',
   },
   statLabel: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#8b949e',
     fontWeight: 'bold',
     marginBottom: 6,
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   statValue: {
     fontSize: 22,
