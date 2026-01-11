@@ -3,6 +3,8 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState, useCallback } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View, RefreshControl, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ACHIEVEMENTS } from '@/constants/achievements';
+import { registerForPushNotificationsAsync, scheduleDailyReminder } from '@/hooks/useNotifications';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -12,6 +14,17 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<any>(null);
   const [calendarDays, setCalendarDays] = useState<any[]>([]);
   const [recentCommits, setRecentCommits] = useState<any[]>([]);
+
+  useEffect(() => {
+    setupNotifications();
+  }, []);
+
+  const setupNotifications = async () => {
+    const hasPermission = await registerForPushNotificationsAsync();
+    if (hasPermission) {
+      await scheduleDailyReminder();
+    }
+  };
 
   const fetchGitHubData = async (accessToken: string) => {
     try {
@@ -166,6 +179,8 @@ export default function HomeScreen() {
     );
   }
 
+  const earnedAchievements = ACHIEVEMENTS.filter(a => a.requirement(stats));
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView 
@@ -180,6 +195,21 @@ export default function HomeScreen() {
           <Text style={styles.subGreeting}>Developer Activity Dashboard</Text>
         </View>
         
+        {/* Achievements Row */}
+        {earnedAchievements.length > 0 && (
+          <View style={styles.badgeSection}>
+            <Text style={styles.sectionTitle}>ACHIEVEMENTS</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgeScroll}>
+              {earnedAchievements.map(achievement => (
+                <View key={achievement.id} style={styles.badgeCard}>
+                  <Text style={styles.badgeIcon}>{achievement.icon}</Text>
+                  <Text style={styles.badgeTitle}>{achievement.title}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         <View style={styles.streakCard}>
           <Text style={styles.streakLabel}>CURRENT STREAK</Text>
           <Text style={styles.streakValue}>{stats?.streak ?? '-'}</Text>
@@ -263,7 +293,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0d1117',
   },
   header: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   username: {
     color: '#ffffff',
@@ -274,6 +304,32 @@ const styles = StyleSheet.create({
     color: '#8b949e',
     fontSize: 14,
     marginTop: 4,
+  },
+  badgeSection: {
+    marginBottom: 24,
+  },
+  badgeScroll: {
+    marginTop: 12,
+    marginLeft: -4,
+  },
+  badgeCard: {
+    backgroundColor: '#161b22',
+    padding: 16,
+    borderRadius: 16,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#30363d',
+    alignItems: 'center',
+    minWidth: 100,
+  },
+  badgeIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  badgeTitle: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   streakCard: {
     backgroundColor: '#161b22',
