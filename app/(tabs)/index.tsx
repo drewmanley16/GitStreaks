@@ -83,13 +83,8 @@ export default function HomeScreen() {
 
       const gqlData = await gqlResponse.json();
       const calendar = gqlData.data?.user?.contributionsCollection?.contributionCalendar;
-      if (calendar) {
-        processStats(calendar);
-        const allDays = calendar.weeks.flatMap((w: any) => w.contributionDays);
-        setCalendarDays(allDays.slice(-21));
-      }
 
-      // Fetch Recent Commit History (Search API for real commit data)
+      // Fetch Recent Commit History (Search API for real commit data across ALL branches)
       const searchResponse = await fetch(
         `https://api.github.com/search/commits?q=author:${userData.login}&sort=author-date&order=desc`, 
         {
@@ -100,9 +95,15 @@ export default function HomeScreen() {
         }
       );
       const searchData = await searchResponse.json();
+      const liveCommits = searchData.items || [];
+
+      if (calendar) {
+        const processed = processStats(calendar, liveCommits);
+        setCalendarDays(processed.slice(-21));
+      }
       
-      if (searchData.items && Array.isArray(searchData.items)) {
-        const commits = searchData.items.map((item: any) => ({
+      if (liveCommits.length > 0) {
+        const commits = liveCommits.map((item: any) => ({
           repo: item.repository.name,
           message: item.commit.message,
           date: new Date(item.commit.author.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
@@ -118,21 +119,41 @@ export default function HomeScreen() {
     }
   };
 
-  const processStats = (calendar: any) => {
-    const allDays = calendar.weeks.flatMap((w: any) => w.contributionDays).reverse();
+  const processStats = (calendar: any, liveCommits: any[]) => {
+    const allDays = calendar.weeks.flatMap((w: any) => w.contributionDays);
     const now = new Date();
     const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     
-    let todayCount = 0;
+    // Map live commits to dates
+    const liveMap: Record<string, number> = {};
+    liveCommits.forEach((c: any) => {
+      const d = new Date(c.commit.author.date).toISOString().split('T')[0];
+      liveMap[d] = (liveMap[d] || 0) + 1;
+    });
+
+    // Merge official stats with live commit data
+    const mergedDays = allDays.map((day: any) => {
+      const liveCount = liveMap[day.date] || 0;
+      return {
+        ...day,
+        contributionCount: Math.max(day.contributionCount, liveCount)
+      };
+    });
+
+    // Re-reverse for streak calculation (descending order)
+    const reversedDays = [...mergedDays].reverse();
+    
+    let todayCount = mergedDays.find((d: any) => d.date === todayStr)?.contributionCount || 0;
     let weekCount = 0;
-    const todayObj = allDays.find((d: any) => d.date === todayStr);
-    todayCount = todayObj?.contributionCount || 0;
+    mergedDays.slice(-7).forEach((day: any) => {
+      weekCount += day.contributionCount;
+    });
 
     let streakDays = 0;
     let streakFound = false;
 
-    for (let i = 0; i < allDays.length; i++) {
-      const day = allDays[i];
+    for (let i = 0; i < reversedDays.length; i++) {
+      const day = reversedDays[i];
       if (!streakFound) {
         if (day.contributionCount > 0) {
           streakFound = true;
@@ -147,16 +168,14 @@ export default function HomeScreen() {
       }
     }
 
-    allDays.slice(0, 7).forEach((day: any) => {
-      weekCount += day.contributionCount;
-    });
-
     setStats({
       total: calendar.totalContributions,
       week: weekCount,
       day: todayCount,
       streak: streakDays,
     });
+
+    return mergedDays; // Return for calendarDays state
   };
 
   const checkLogin = useCallback(async () => {
