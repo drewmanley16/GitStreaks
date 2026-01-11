@@ -1,11 +1,107 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View, Text } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, TouchableOpacity, View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ACHIEVEMENTS } from '@/constants/achievements';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
+
+  useEffect(() => {
+    loadUserData();
+  }, []);
+
+  const loadUserData = async () => {
+    try {
+      const savedToken = await AsyncStorage.getItem('userToken');
+      if (!savedToken) {
+        router.replace('/login');
+        return;
+      }
+
+      // Fetch user profile
+      const userResponse = await fetch('https://api.github.com/user', {
+        headers: { Authorization: `Bearer ${savedToken}` },
+      });
+      const userData = await userResponse.json();
+      setUser(userData);
+
+      // Fetch stats for achievements
+      const query = `
+        query($userName:String!) { 
+          user(login: $userName) {
+            contributionsCollection {
+              contributionCalendar {
+                totalContributions
+                weeks {
+                  contributionDays {
+                    contributionCount
+                    date
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      const gqlResponse = await fetch('https://api.github.com/graphql', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${savedToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+          variables: { userName: userData.login },
+        }),
+      });
+
+      const gqlData = await gqlResponse.json();
+      const calendar = gqlData.data?.user?.contributionsCollection?.contributionCalendar;
+      
+      if (calendar) {
+        const allDays = calendar.weeks.flatMap((w: any) => w.contributionDays).reverse();
+        const now = new Date();
+        const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        
+        const todayObj = allDays.find((d: any) => d.date === todayStr);
+        const todayCount = todayObj?.contributionCount || 0;
+
+        let streakDays = 0;
+        let streakFound = false;
+        for (let i = 0; i < allDays.length; i++) {
+          const day = allDays[i];
+          if (!streakFound) {
+            if (day.contributionCount > 0) {
+              streakFound = true;
+              streakDays = 1;
+            } else {
+              if (day.date === todayStr) continue;
+              else break;
+            }
+          } else {
+            if (day.contributionCount > 0) streakDays++;
+            else break;
+          }
+        }
+
+        setStats({
+          total: calendar.totalContributions,
+          streak: streakDays,
+          day: todayCount,
+        });
+      }
+    } catch (e) {
+      console.error('Failed to load user data in settings', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -17,13 +113,54 @@ export default function SettingsScreen() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#f1e05a" />
+      </View>
+    );
+  }
+
+  const earnedAchievements = ACHIEVEMENTS.filter(a => a.requirement(stats));
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.contentContainer}>
         <View style={styles.header}>
-          <Text style={styles.title}>Settings</Text>
+          <Text style={styles.title}>Profile</Text>
+        </View>
+
+        {/* User Info Section */}
+        <View style={styles.userCard}>
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarText}>{user?.login?.charAt(0).toUpperCase()}</Text>
+          </View>
+          <View>
+            <Text style={styles.userName}>{user?.name || user?.login}</Text>
+            <Text style={styles.userLogin}>@{user?.login}</Text>
+          </View>
         </View>
         
+        {/* Achievements Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>ACHIEVEMENTS</Text>
+          <View style={styles.achievementsGrid}>
+            {ACHIEVEMENTS.map(achievement => {
+              const isEarned = earnedAchievements.some(a => a.id === achievement.id);
+              return (
+                <View key={achievement.id} style={[styles.achievementItem, !isEarned && styles.achievementLocked]}>
+                  <Text style={[styles.achievementIcon, !isEarned && styles.grayscale]}>
+                    {achievement.icon}
+                  </Text>
+                  <Text style={[styles.achievementTitle, !isEarned && styles.textMuted]}>
+                    {achievement.title}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ACCOUNT</Text>
           <View style={styles.card}>
@@ -37,7 +174,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Git Streaks v1.0.4</Text>
+          <Text style={styles.footerText}>Git Streaks v1.0.5</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -54,24 +191,100 @@ const styles = StyleSheet.create({
     paddingTop: 40,
     paddingBottom: 40,
   },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   header: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   title: {
     color: '#ffffff',
     fontSize: 28,
     fontWeight: 'bold',
   },
+  userCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161b22',
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#30363d',
+    marginBottom: 32,
+  },
+  avatarPlaceholder: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#30363d',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  avatarText: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  userName: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  userLogin: {
+    color: '#8b949e',
+    fontSize: 14,
+  },
   section: {
-    marginBottom: 24,
+    marginBottom: 32,
   },
   sectionTitle: {
     color: '#8b949e',
     fontSize: 12,
     fontWeight: 'bold',
-    marginBottom: 12,
+    marginBottom: 16,
     marginLeft: 4,
     letterSpacing: 1.5,
+  },
+  achievementsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  achievementItem: {
+    backgroundColor: '#161b22',
+    width: '30%',
+    aspectRatio: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#30363d',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 8,
+  },
+  achievementLocked: {
+    opacity: 0.4,
+    backgroundColor: '#0d1117',
+    borderStyle: 'dashed',
+  },
+  achievementIcon: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
+  achievementTitle: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  grayscale: {
+    // Note: React Native doesn't have a simple grayscale filter for text/emoji
+    // but the opacity on achievementLocked handles the visual "locked" state
+  },
+  textMuted: {
+    color: '#8b949e',
   },
   card: {
     backgroundColor: '#161b22',
@@ -97,7 +310,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   footer: {
-    marginTop: 40,
+    marginTop: 20,
     alignItems: 'center',
   },
   footerText: {
