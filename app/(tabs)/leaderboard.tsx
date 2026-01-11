@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState, useMemo } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, Text, Share } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, Text, Share, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 
@@ -39,10 +39,13 @@ export default function LeaderboardScreen() {
     }
   };
 
-  const fetchContributionCalendar = async (accessToken: string, userName: string) => {
+  const fetchFriendData = async (accessToken: string, userName: string) => {
     const query = `
       query($userName:String!) { 
         user(login: $userName) {
+          avatarUrl
+          bio
+          name
           contributionsCollection {
             contributionCalendar {
               totalContributions
@@ -72,7 +75,7 @@ export default function LeaderboardScreen() {
       });
 
       const gqlData = await gqlResponse.json();
-      return gqlData.data?.user?.contributionsCollection?.contributionCalendar;
+      return gqlData.data?.user;
     } catch (e) {
       return null;
     }
@@ -84,7 +87,8 @@ export default function LeaderboardScreen() {
       const friendList = storedFriends ? JSON.parse(storedFriends) : [];
       
       // Fetch my stats first to compare for reminders
-      const myCalendar = await fetchContributionCalendar(accessToken, username);
+      const myData = await fetchFriendData(accessToken, username);
+      const myCalendar = myData?.contributionsCollection?.contributionCalendar;
       const now = new Date();
       const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
       
@@ -94,7 +98,8 @@ export default function LeaderboardScreen() {
 
       const friendData = await Promise.all(
         friendList.map(async (name: string) => {
-          const calendar = await fetchContributionCalendar(accessToken, name);
+          const data = await fetchFriendData(accessToken, name);
+          const calendar = data?.contributionsCollection?.contributionCalendar;
           if (calendar) {
             const allDays = calendar.weeks.flatMap((w: any) => w.contributionDays).reverse();
             let streak = 0;
@@ -120,7 +125,13 @@ export default function LeaderboardScreen() {
               });
             }
 
-            return { username: name, streak, total: calendar.totalContributions };
+            return { 
+              username: name, 
+              streak, 
+              total: calendar.totalContributions,
+              avatarUrl: data.avatarUrl,
+              name: data.name
+            };
           }
           return null;
         })
@@ -137,7 +148,8 @@ export default function LeaderboardScreen() {
     
     setIsSyncing(true);
     try {
-      const calendar = await fetchContributionCalendar(token, friendUsername.trim());
+      const data = await fetchFriendData(token, friendUsername.trim());
+      const calendar = data?.contributionsCollection?.contributionCalendar;
       if (!calendar) {
         Alert.alert('Error', 'GitHub user not found or has no public contributions.');
         return;
@@ -230,7 +242,11 @@ export default function LeaderboardScreen() {
           {filteredFriends.map((friend, index) => (
             <View key={friend.username} style={styles.row}>
               <Text style={styles.rank}>{index + 1}</Text>
-              <Text style={styles.name}>{friend.username}</Text>
+              <Image source={{ uri: friend.avatarUrl }} style={styles.avatar} />
+              <View style={styles.friendInfo}>
+                <Text style={styles.name}>{friend.name || friend.username}</Text>
+                <Text style={styles.username}>@{friend.username}</Text>
+              </View>
               <Text style={styles.streak}>{friend.streak}d</Text>
             </View>
           ))}
@@ -346,21 +362,35 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#30363d',
   },
   rank: {
     color: '#8b949e',
-    width: 35,
+    width: 25,
     fontSize: 14,
     fontWeight: 'bold',
   },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#30363d',
+  },
+  friendInfo: {
+    flex: 1,
+  },
   name: {
     color: '#ffffff',
-    flex: 1,
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  username: {
+    color: '#8b949e',
+    fontSize: 12,
   },
   streak: {
     color: '#f1e05a',

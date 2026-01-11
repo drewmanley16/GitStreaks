@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View, Text, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View, Text, ActivityIndicator, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ACHIEVEMENTS } from '@/constants/achievements';
 import * as Notifications from 'expo-notifications';
@@ -156,12 +156,21 @@ export default function SettingsScreen() {
 
         {/* User Info Section */}
         <View style={styles.userCard}>
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarText}>{user?.login?.charAt(0).toUpperCase()}</Text>
-          </View>
-          <View>
+          {user?.avatar_url ? (
+            <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarText}>{user?.login?.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={styles.userInfo}>
             <Text style={styles.userName}>{user?.name || user?.login}</Text>
             <Text style={styles.userLogin}>@{user?.login}</Text>
+            {user?.bio && (
+              <Text style={styles.userBio} numberOfLines={2}>
+                {user.bio}
+              </Text>
+            )}
           </View>
         </View>
         
@@ -246,14 +255,25 @@ const styles = StyleSheet.create({
     borderColor: '#30363d',
     marginBottom: 32,
   },
+  avatar: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    marginRight: 16,
+    borderWidth: 2,
+    borderColor: '#30363d',
+  },
   avatarPlaceholder: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     backgroundColor: '#30363d',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
+  },
+  userInfo: {
+    flex: 1,
   },
   avatarText: {
     color: '#ffffff',
@@ -268,6 +288,13 @@ const styles = StyleSheet.create({
   userLogin: {
     color: '#8b949e',
     fontSize: 14,
+    marginBottom: 4,
+  },
+  userBio: {
+    color: '#8b949e',
+    fontSize: 12,
+    fontStyle: 'italic',
+    lineHeight: 18,
   },
   section: {
     marginBottom: 32,
