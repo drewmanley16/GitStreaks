@@ -1,16 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState, useCallback } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View, RefreshControl, Text, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, View, RefreshControl, Text, TouchableOpacity, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+type TimePeriod = 'day' | 'week' | 'month' | 'year';
 
 export default function AnalyticsScreen() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [period, setPeriod] = useState<TimePeriod>('month');
   const [analytics, setAnalytics] = useState<any>(null);
 
-  const fetchAdvancedAnalytics = async () => {
+  const fetchAdvancedAnalytics = async (selectedPeriod: TimePeriod) => {
     try {
       const accessToken = await AsyncStorage.getItem('userToken');
       const username = await AsyncStorage.getItem('myUsername');
@@ -20,15 +23,34 @@ export default function AnalyticsScreen() {
         return;
       }
 
+      const now = new Date();
+      let fromDate = new Date();
+      
+      if (selectedPeriod === 'day') fromDate.setDate(now.getDate() - 1);
+      else if (selectedPeriod === 'week') fromDate.setDate(now.getDate() - 7);
+      else if (selectedPeriod === 'month') fromDate.setDate(now.getDate() - 30);
+      else if (selectedPeriod === 'year') fromDate.setFullYear(now.getFullYear() - 1);
+
+      const fromISO = fromDate.toISOString();
+
       const query = `
-        query($userName:String!) { 
+        query($userName:String!, $from:DateTime!) { 
           user(login: $userName) {
-            contributionsCollection {
+            contributionsCollection(from: $from) {
               totalCommitContributions
               totalPullRequestContributions
               totalPullRequestReviewContributions
               totalIssueContributions
               totalRepositoryContributions
+              contributionCalendar {
+                totalContributions
+                weeks {
+                  contributionDays {
+                    contributionCount
+                    date
+                  }
+                }
+              }
               pullRequestContributions(first: 20) {
                 nodes {
                   pullRequest {
@@ -62,7 +84,7 @@ export default function AnalyticsScreen() {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query, variables: { userName: username } }),
+        body: JSON.stringify({ query, variables: { userName: username, from: fromISO } }),
       });
 
       const result = await response.json();
@@ -73,6 +95,10 @@ export default function AnalyticsScreen() {
         const totalAdditions = prs.reduce((acc: number, node: any) => acc + node.pullRequest.additions, 0);
         const totalDeletions = prs.reduce((acc: number, node: any) => acc + node.pullRequest.deletions, 0);
         
+        // Process Graph Data
+        const allDays = data.contributionsCollection.contributionCalendar.weeks.flatMap((w: any) => w.contributionDays);
+        const graphData = allDays.map((d: any) => d.contributionCount);
+
         // Language Breakdown logic
         const langMap: any = {};
         data.repositories.nodes.forEach((repo: any) => {
@@ -92,6 +118,7 @@ export default function AnalyticsScreen() {
           reviews: data.contributionsCollection.totalPullRequestReviewContributions,
           issues: data.contributionsCollection.totalIssueContributions,
           repos: data.contributionsCollection.totalRepositoryContributions,
+          graphData,
           impact: {
             additions: totalAdditions,
             deletions: totalDeletions,
@@ -109,15 +136,54 @@ export default function AnalyticsScreen() {
   };
 
   useEffect(() => {
-    fetchAdvancedAnalytics();
-  }, []);
+    fetchAdvancedAnalytics(period);
+  }, [period]);
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    fetchAdvancedAnalytics();
-  }, []);
+    fetchAdvancedAnalytics(period);
+  }, [period]);
 
-  if (isLoading) {
+  const handlePeriodChange = (newPeriod: TimePeriod) => {
+    setIsLoading(true);
+    setPeriod(newPeriod);
+  };
+
+  const renderGraph = () => {
+    if (!analytics?.graphData || analytics.graphData.length === 0) return null;
+
+    const data = analytics.graphData;
+    const max = Math.max(...data, 1);
+    const screenWidth = Dimensions.get('window').width - 48; // Padding
+    const barWidth = (screenWidth - (data.length * 2)) / data.length;
+
+    return (
+      <View style={styles.graphContainer}>
+        <View style={styles.graphBars}>
+          {data.map((count: number, i: number) => (
+            <View 
+              key={i} 
+              style={[
+                styles.bar, 
+                { 
+                  height: (count / max) * 100 + 2, // At least 2px
+                  width: Math.max(barWidth, 2),
+                  backgroundColor: count > 0 ? '#f1e05a' : '#30363d',
+                  opacity: count > 0 ? Math.min(0.4 + (count / max) * 0.6, 1) : 0.3
+                }
+              ]} 
+            />
+          ))}
+        </View>
+        <View style={styles.graphLabels}>
+          <Text style={styles.graphLabel}>Earlier</Text>
+          <Text style={styles.graphLabel}>Today</Text>
+        </View>
+      </View>
+    );
+  };
+
+  if (isLoading && !isRefreshing) {
     return (
       <View style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color="#f1e05a" />
@@ -134,12 +200,32 @@ export default function AnalyticsScreen() {
         <Text style={styles.title}>Deep Analytics</Text>
       </View>
 
+      {/* Period Selector */}
+      <View style={styles.periodSelector}>
+        {(['day', 'week', 'month', 'year'] as TimePeriod[]).map((p) => (
+          <TouchableOpacity 
+            key={p} 
+            style={[styles.periodTab, period === p && styles.periodTabActive]}
+            onPress={() => handlePeriodChange(p)}
+          >
+            <Text style={[styles.periodTabText, period === p && styles.periodTabTextActive]}>
+              {p.toUpperCase()}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <ScrollView 
         contentContainerStyle={styles.contentContainer}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor="#f1e05a" />
         }
       >
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>ACTIVITY OVERVIEW</Text>
+          {renderGraph()}
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>CONTRIBUTION MIX</Text>
           <View style={styles.grid}>
@@ -230,7 +316,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 20,
+    paddingBottom: 10,
   },
   backButton: {
     marginRight: 16,
@@ -245,6 +331,34 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
   },
+  periodSelector: {
+    flexDirection: 'row',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  periodTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: '#161b22',
+    borderWidth: 1,
+    borderColor: '#30363d',
+  },
+  periodTabActive: {
+    backgroundColor: '#30363d',
+    borderColor: '#f1e05a',
+  },
+  periodTabText: {
+    color: '#8b949e',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
+  periodTabTextActive: {
+    color: '#f1e05a',
+  },
   section: {
     marginBottom: 32,
   },
@@ -254,6 +368,32 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 16,
     letterSpacing: 1.5,
+  },
+  graphContainer: {
+    backgroundColor: '#161b22',
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#30363d',
+  },
+  graphBars: {
+    height: 120,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  bar: {
+    borderRadius: 2,
+  },
+  graphLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  graphLabel: {
+    color: '#30363d',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   grid: {
     flexDirection: 'row',
@@ -349,4 +489,3 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
 });
-
