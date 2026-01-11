@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View, RefreshControl, Text, TouchableOpacity, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type TimePeriod = 'day' | 'week' | 'month' | 'year';
+type TimePeriod = 'day' | 'week' | 'month' | 'year' | 'all';
 
 export default function AnalyticsScreen() {
   const router = useRouter();
@@ -30,6 +30,14 @@ export default function AnalyticsScreen() {
       else if (selectedPeriod === 'week') fromDate.setDate(now.getDate() - 7);
       else if (selectedPeriod === 'month') fromDate.setDate(now.getDate() - 30);
       else if (selectedPeriod === 'year') fromDate.setFullYear(now.getFullYear() - 1);
+      else if (selectedPeriod === 'all') {
+        // Fetch user info to get createdAt
+        const userRes = await fetch('https://api.github.com/user', {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        const userData = await userRes.json();
+        fromDate = new Date(userData.created_at);
+      }
 
       const fromISO = fromDate.toISOString();
 
@@ -202,7 +210,7 @@ export default function AnalyticsScreen() {
 
       {/* Period Selector */}
       <View style={styles.periodSelector}>
-        {(['day', 'week', 'month', 'year'] as TimePeriod[]).map((p) => (
+        {(['day', 'week', 'month', 'year', 'all'] as TimePeriod[]).map((p) => (
           <TouchableOpacity 
             key={p} 
             style={[styles.periodTab, period === p && styles.periodTabActive]}
