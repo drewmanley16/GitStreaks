@@ -1,10 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View, Text, ActivityIndicator, Alert, Image } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View, Text, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ACHIEVEMENTS } from '@/constants/achievements';
-import * as Notifications from 'expo-notifications';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -114,29 +113,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const testNotification = async () => {
-    try {
-      console.log('DEBUG: Scheduling test notification...');
-      const id = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "🚀 Test Success!",
-          body: "Push notifications are working perfectly.",
-          sound: true,
-          priority: Notifications.AndroidImportance.HIGH,
-        },
-        trigger: {
-          seconds: 5,
-          type: 'timeInterval',
-        } as any,
-      });
-      console.log('DEBUG: Notification scheduled with ID:', id);
-      Alert.alert("Sent", "Check your phone in 5 seconds! Try locking your screen to see it in the background.");
-    } catch (e) {
-      console.error('DEBUG: Test Notification Error:', e);
-      Alert.alert("Error", "Could not send notification. Check console for details.");
-    }
-  };
-
   if (isLoading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -200,12 +176,6 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>SYSTEM</Text>
           <View style={styles.card}>
             <View style={styles.row}>
-              <Text style={styles.label}>Test Notification</Text>
-              <TouchableOpacity onPress={testNotification}>
-                <Text style={styles.testText}>Send Test</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={[styles.row, { borderTopWidth: 1, borderTopColor: '#30363d' }]}>
               <Text style={styles.label}>Logout from GitHub</Text>
               <TouchableOpacity onPress={handleLogout}>
                 <Text style={styles.logoutText}>Log out</Text>
@@ -371,11 +341,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '500',
-  },
-  testText: {
-    color: '#f1e05a',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
   logoutText: {
     color: '#ff7b72',
