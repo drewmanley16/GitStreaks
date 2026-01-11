@@ -96,12 +96,9 @@ export default function AnalyticsScreen() {
       const data = result.data?.user;
 
       if (data) {
-        const prs = data.contributionsCollection.pullRequestContributions.nodes;
-        
-        // Fetch detailed commit stats from REST API for more accuracy on impact
-        // Also fetch All Time totals for commits, PRs, and Issues
-        const [commitsRes, prsRes, issuesRes] = await Promise.all([
-          fetch(`https://api.github.com/search/commits?q=author:${username}&sort=author-date&order=desc&per_page=30`, {
+        // Fetch detailed activity stats from REST API for more accuracy on impact
+        const [commitsRes, prsRes, issuesRes, reposRes] = await Promise.all([
+          fetch(`https://api.github.com/search/commits?q=author:${username}&sort=author-date&order=desc&per_page=100`, {
             headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github.v3+json' },
           }),
           fetch(`https://api.github.com/search/issues?q=author:${username}+type:pr`, {
@@ -109,57 +106,81 @@ export default function AnalyticsScreen() {
           }),
           fetch(`https://api.github.com/search/issues?q=author:${username}+type:issue`, {
             headers: { Authorization: `Bearer ${accessToken}` },
+          }),
+          fetch(`https://api.github.com/user/repos?sort=pushed&per_page=50`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
           })
         ]);
 
-        const [commitsData, allPRsData, allIssuesData] = await Promise.all([
+        const [commitsData, allPRsData, allIssuesData, reposData] = await Promise.all([
           commitsRes.json(),
           prsRes.json(),
-          issuesRes.json()
+          issuesRes.json(),
+          reposRes.json()
         ]);
         
         let commitAdditions = 0;
         let commitDeletions = 0;
         let periodCommitsCount = 0;
-        let allTimeCommits = commitsData.total_count || 0;
-        let allTimePRs = allPRsData.total_count || 0;
-        let allTimeIssues = allIssuesData.total_count || 0;
+        
+        // Filter commits strictly within our period
+        const periodCommits = (commitsData.items || []).filter((item: any) => 
+          selectedPeriod === 'all' ? true : new Date(item.commit.author.date) >= fromDate
+        );
+        periodCommitsCount = periodCommits.length;
 
-        if (commitsData.items && Array.isArray(commitsData.items)) {
-          const periodCommits = commitsData.items.filter((item: any) => 
-            selectedPeriod === 'all' ? true : new Date(item.commit.author.date) >= fromDate
-          );
-          periodCommitsCount = periodCommits.length;
+        // Fetch detail for commits in this period to get real code impact (limit to 20 for rate safety)
+        const detailStats = await Promise.all(
+          periodCommits.slice(0, 20).map(async (c: any) => {
+            try {
+              const res = await fetch(c.url, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+              });
+              return await res.json();
+            } catch { return null; }
+          })
+        );
+        
+        detailStats.forEach(s => {
+          if (s?.stats) {
+            commitAdditions += s.stats.additions;
+            commitDeletions += s.stats.deletions;
+          }
+        });
 
-          const detailStats = await Promise.all(
-            periodCommits.slice(0, 15).map(async (c: any) => {
-              try {
-                const res = await fetch(c.url, {
-                  headers: { Authorization: `Bearer ${accessToken}` }
-                });
-                return await res.json();
-              } catch { return null; }
-            })
-          );
-          
-          detailStats.forEach(s => {
-            if (s?.stats) {
-              commitAdditions += s.stats.additions;
-              commitDeletions += s.stats.deletions;
-            }
-          });
-        }
-
-        // Process Graph Data
-        const allDays = data.contributionsCollection.contributionCalendar.weeks.flatMap((w: any) => w.contributionDays);
-        const graphData = allDays.map((d: any) => d.contributionCount);
-
-        // Language Breakdown
+        // Language Breakdown logic - filter by repos pushed to in this period
         const langMap: any = {};
-        data.repositories.nodes.forEach((repo: any) => {
-          repo.languages.edges.forEach((edge: any) => {
-            const name = edge.node.name;
-            langMap[name] = (langMap[name] || 0) + edge.size;
+        const repoActivityMap: any = {};
+        const periodRepos = (reposData || []).filter((repo: any) => 
+          selectedPeriod === 'all' ? true : new Date(repo.pushed_at) >= fromDate
+        );
+
+        // Calculate repo activity from commits in this period
+        periodCommits.forEach((c: any) => {
+          const repoName = c.repository.name;
+          repoActivityMap[repoName] = (repoActivityMap[repoName] || 0) + 1;
+        });
+
+        const topRepos = Object.entries(repoActivityMap)
+          .sort(([, a]: any, [, b]: any) => b - a)
+          .slice(0, 5)
+          .map(([name, count]) => ({ name, count }));
+
+        // Fetch detailed languages for each repo in the period
+        const repoLanguages = await Promise.all(
+          periodRepos.slice(0, 10).map(async (repo: any) => {
+            try {
+              const res = await fetch(repo.languages_url, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+              });
+              return await res.json();
+            } catch { return {}; }
+          })
+        );
+
+        repoLanguages.forEach(langs => {
+          Object.entries(langs).forEach(([name, size]: [string, any]) => {
+            langMap[name] = (langMap[name] || 0) + size;
           });
         });
 
@@ -167,18 +188,24 @@ export default function AnalyticsScreen() {
           .sort(([, a]: any, [, b]: any) => b - a)
           .slice(0, 5);
 
+        // Totals based on period
+        const totalCommits = selectedPeriod === 'all' ? commitsData.total_count : periodCommits.length;
+        const totalPRs = selectedPeriod === 'all' ? allPRsData.total_count : data.contributionsCollection.totalPullRequestContributions;
+        const totalIssues = selectedPeriod === 'all' ? allIssuesData.total_count : data.contributionsCollection.totalIssueContributions;
+
         setAnalytics({
-          commits: selectedPeriod === 'all' ? allTimeCommits : data.contributionsCollection.totalCommitContributions,
-          prs: selectedPeriod === 'all' ? allTimePRs : data.contributionsCollection.totalPullRequestContributions,
-          reviews: data.contributionsCollection.totalPullRequestReviewContributions, // Reviews limited to 1yr in GQL
-          issues: selectedPeriod === 'all' ? allTimeIssues : data.contributionsCollection.totalIssueContributions,
-          repos: data.contributionsCollection.totalRepositoryContributions,
-          graphData,
+          commits: totalCommits,
+          prs: totalPRs,
+          reviews: data.contributionsCollection.totalPullRequestReviewContributions,
+          issues: totalIssues,
+          repos: periodRepos.length,
+          topRepos,
+          graphData: data.contributionsCollection.contributionCalendar.weeks.flatMap((w: any) => w.contributionDays).map((d: any) => d.contributionCount),
           startDate: fromDate,
           impact: {
             additions: commitAdditions,
             deletions: commitDeletions,
-            avgPerCommit: periodCommitsCount > 0 ? Math.round(commitAdditions / Math.min(periodCommitsCount, 15)) : 0
+            avgPerCommit: periodCommitsCount > 0 ? Math.round(commitAdditions / Math.min(periodCommitsCount, 20)) : 0
           },
           languages: sortedLangs
         });
@@ -340,6 +367,26 @@ export default function AnalyticsScreen() {
             <Text style={styles.avgText}>
               Avg. <Text style={{ color: '#f1e05a' }}>{analytics?.impact.avgPerCommit}</Text> lines per commit
             </Text>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>TOP REPOSITORIES</Text>
+          <View style={styles.listCard}>
+            {analytics?.topRepos.length > 0 ? (
+              analytics.topRepos.map((repo: any, index: number) => (
+                <View key={repo.name} style={[styles.listItem, index === 0 && { borderTopWidth: 0 }]}>
+                  <Text style={styles.repoNameText}>{repo.name}</Text>
+                  <View style={styles.repoCountBadge}>
+                    <Text style={styles.repoCountText}>{repo.count} events</Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyText}>No repository activity in this period.</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -537,6 +584,42 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#30363d',
+  },
+  listCard: {
+    backgroundColor: '#161b22',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#30363d',
+    overflow: 'hidden',
+  },
+  listItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#30363d',
+  },
+  repoNameText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  repoCountBadge: {
+    backgroundColor: '#30363d',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  repoCountText: {
+    color: '#f1e05a',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  emptyCard: {
+    padding: 32,
+    alignItems: 'center',
   },
   langRow: {
     marginBottom: 16,
