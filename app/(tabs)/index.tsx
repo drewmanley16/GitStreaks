@@ -239,10 +239,13 @@ export default function HomeScreen() {
             <Text style={styles.statLabel}>WEEK</Text>
             <Text style={styles.statValue}>{stats?.week ?? 0}</Text>
           </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>YEAR</Text>
-            <Text style={styles.statValue}>{stats?.total ?? 0}</Text>
-          </View>
+          <TouchableOpacity 
+            style={[styles.statBox, { borderColor: '#f1e05a' }]}
+            onPress={() => router.push('/analytics')}
+          >
+            <Text style={[styles.statLabel, { color: '#f1e05a' }]}>ANALYTICS</Text>
+            <Text style={styles.statValue}>→</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Recent Commits Section */}
