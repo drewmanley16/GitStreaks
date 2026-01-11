@@ -3,6 +3,15 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
+// Define how notifications should be handled when the app is in the foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 export async function registerForPushNotificationsAsync() {
   if (!Device.isDevice) {
     console.log('Must use physical device for Push Notifications');

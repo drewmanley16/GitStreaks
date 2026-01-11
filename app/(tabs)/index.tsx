@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View, RefreshControl, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { registerForPushNotificationsAsync, scheduleDailyReminder } from '@/hooks/useNotifications';
+import * as Notifications from 'expo-notifications';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -16,6 +17,19 @@ export default function HomeScreen() {
 
   useEffect(() => {
     setupNotifications();
+
+    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
+      console.log('DEBUG: Notification Received in Foreground:', notification.request.content.title);
+    });
+
+    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('DEBUG: Notification Tapped:', response.notification.request.content.title);
+    });
+
+    return () => {
+      Notifications.removeNotificationSubscription(notificationListener);
+      Notifications.removeNotificationSubscription(responseListener);
+    };
   }, []);
 
   const setupNotifications = async () => {

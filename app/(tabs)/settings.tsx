@@ -116,20 +116,24 @@ export default function SettingsScreen() {
 
   const testNotification = async () => {
     try {
-      await Notifications.scheduleNotificationAsync({
+      console.log('DEBUG: Scheduling test notification...');
+      const id = await Notifications.scheduleNotificationAsync({
         content: {
           title: "🚀 Test Success!",
           body: "Push notifications are working perfectly.",
           sound: true,
+          priority: Notifications.AndroidImportance.HIGH,
         },
         trigger: {
+          seconds: 5,
           type: 'timeInterval',
-          seconds: 2, // Send in 2 seconds
         } as any,
       });
-      Alert.alert("Sent", "Check your phone in 2 seconds!");
+      console.log('DEBUG: Notification scheduled with ID:', id);
+      Alert.alert("Sent", "Check your phone in 5 seconds! Try locking your screen to see it in the background.");
     } catch (e) {
-      Alert.alert("Error", "Could not send notification. Check permissions in your device settings.");
+      console.error('DEBUG: Test Notification Error:', e);
+      Alert.alert("Error", "Could not send notification. Check console for details.");
     }
   };
 
