@@ -210,16 +210,21 @@ export default function LeaderboardScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.searchSection}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search friends..."
-            placeholderTextColor="#8b949e"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-          />
-        </View>
+        {friends.length > 0 && (
+          <View style={styles.searchSection}>
+            <View style={styles.searchBar}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search your leaderboard..."
+                placeholderTextColor="#8b949e"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+              />
+            </View>
+          </View>
+        )}
 
         <View style={styles.list}>
           {filteredFriends.map((friend, index) => (
@@ -312,13 +317,22 @@ const styles = StyleSheet.create({
   searchSection: {
     marginBottom: 24,
   },
-  searchInput: {
-    backgroundColor: '#0d1117',
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161b22',
     borderWidth: 1,
     borderColor: '#30363d',
     borderRadius: 12,
+    paddingHorizontal: 12,
+  },
+  searchIcon: {
+    fontSize: 14,
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
     color: '#ffffff',
-    paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 14,
   },
