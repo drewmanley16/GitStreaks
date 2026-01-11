@@ -100,9 +100,53 @@ export default function AnalyticsScreen() {
 
       if (data) {
         const prs = data.contributionsCollection.pullRequestContributions.nodes;
-        const totalAdditions = prs.reduce((acc: number, node: any) => acc + node.pullRequest.additions, 0);
-        const totalDeletions = prs.reduce((acc: number, node: any) => acc + node.pullRequest.deletions, 0);
         
+        // Fetch detailed commit stats from REST API for more accuracy on impact
+        const commitsResponse = await fetch(
+          `https://api.github.com/search/commits?q=author:${username}&sort=author-date&order=desc&per_page=15`,
+          {
+            headers: { 
+              Authorization: `Bearer ${accessToken}`,
+              Accept: 'application/vnd.github.v3+json'
+            },
+          }
+        );
+        const commitsData = await commitsResponse.json();
+        
+        let commitAdditions = 0;
+        let commitDeletions = 0;
+        let periodCommitsCount = 0;
+
+        if (commitsData.items && Array.isArray(commitsData.items)) {
+          // Filter commits within our period
+          const periodCommits = commitsData.items.filter((item: any) => 
+            new Date(item.commit.author.date) >= fromDate
+          );
+          periodCommitsCount = periodCommits.length;
+
+          // For the 'day' period, let's actually fetch the detail for each if it's a small number
+          // to get real additions/deletions. Otherwise we use PR data as fallback.
+          if (selectedPeriod === 'day' || selectedPeriod === 'week') {
+            const detailStats = await Promise.all(
+              periodCommits.slice(0, 10).map(async (c: any) => {
+                try {
+                  const res = await fetch(c.url, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                  });
+                  return await res.json();
+                } catch { return null; }
+              })
+            );
+            
+            detailStats.forEach(s => {
+              if (s?.stats) {
+                commitAdditions += s.stats.additions;
+                commitDeletions += s.stats.deletions;
+              }
+            });
+          }
+        }
+
         // Process Graph Data
         const allDays = data.contributionsCollection.contributionCalendar.weeks.flatMap((w: any) => w.contributionDays);
         const graphData = allDays.map((d: any) => d.contributionCount);
@@ -129,9 +173,9 @@ export default function AnalyticsScreen() {
           graphData,
           startDate: fromDate,
           impact: {
-            additions: totalAdditions,
-            deletions: totalDeletions,
-            avgPerPR: prs.length > 0 ? Math.round((totalAdditions + totalDeletions) / prs.length) : 0
+            additions: commitAdditions,
+            deletions: commitDeletions,
+            avgPerCommit: periodCommitsCount > 0 ? Math.round(commitAdditions / periodCommitsCount) : 0
           },
           languages: sortedLangs
         });
@@ -275,7 +319,7 @@ export default function AnalyticsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>CODE IMPACT (Recent PRs)</Text>
+          <Text style={styles.sectionLabel}>CODE IMPACT (Recent Pushes)</Text>
           <View style={styles.impactCard}>
             <View style={styles.impactRow}>
               <View>
@@ -289,7 +333,7 @@ export default function AnalyticsScreen() {
             </View>
             <View style={styles.divider} />
             <Text style={styles.avgText}>
-              Avg. <Text style={{ color: '#f1e05a' }}>{analytics?.impact.avgPerPR}</Text> lines changed per PR
+              Avg. <Text style={{ color: '#f1e05a' }}>{analytics?.impact.avgPerCommit}</Text> lines changed per commit
             </Text>
           </View>
         </View>
