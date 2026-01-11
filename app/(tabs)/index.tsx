@@ -11,9 +11,9 @@ export default function HomeScreen() {
   const [user, setUser] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
   const [calendarDays, setCalendarDays] = useState<any[]>([]);
+  const [recentCommits, setRecentCommits] = useState<any[]>([]);
 
   const fetchGitHubData = async (accessToken: string) => {
-    console.log('DEBUG: Starting fetchGitHubData');
     try {
       const userResponse = await fetch('https://api.github.com/user', {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -22,6 +22,7 @@ export default function HomeScreen() {
       setUser(userData);
       await AsyncStorage.setItem('myUsername', userData.login);
 
+      // Fetch Contribution Calendar (GraphQL)
       const query = `
         query($userName:String!) { 
           user(login: $userName) {
@@ -60,6 +61,27 @@ export default function HomeScreen() {
         const allDays = calendar.weeks.flatMap((w: any) => w.contributionDays);
         setCalendarDays(allDays.slice(-21));
       }
+
+      // Fetch Recent Commit History (REST Events)
+      const eventsResponse = await fetch(`https://api.github.com/users/${userData.login}/events`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const eventsData = await eventsResponse.json();
+      
+      const commits = eventsData
+        .filter((event: any) => event.type === 'PushEvent')
+        .flatMap((event: any) => 
+          event.payload.commits.map((commit: any) => ({
+            repo: event.repo.name.split('/')[1],
+            message: commit.message,
+            date: new Date(event.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+            sha: commit.sha.substring(0, 7)
+          }))
+        )
+        .slice(0, 10); // Show last 10 commits
+
+      setRecentCommits(commits);
+
     } catch (error) {
       console.error('DEBUG: Fetch Error', error);
     }
@@ -192,6 +214,29 @@ export default function HomeScreen() {
             <Text style={styles.statValue}>{stats?.total ?? 0}</Text>
           </View>
         </View>
+
+        {/* Recent Commits Section */}
+        <View style={styles.historySection}>
+          <Text style={styles.sectionTitle}>RECENT HISTORY</Text>
+          {recentCommits.length > 0 ? (
+            recentCommits.map((commit, index) => (
+              <View key={`${commit.sha}-${index}`} style={styles.commitRow}>
+                <View style={styles.commitInfo}>
+                  <Text style={styles.repoName}>{commit.repo}</Text>
+                  <Text style={styles.commitMessage} numberOfLines={1}>{commit.message}</Text>
+                </View>
+                <View style={styles.commitMeta}>
+                  <Text style={styles.commitDate}>{commit.date}</Text>
+                  <Text style={styles.commitSha}>{commit.sha}</Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={styles.emptyHistory}>
+              <Text style={styles.emptyText}>No recent commit activity found.</Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -204,7 +249,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 24,
-    paddingTop: 40, // Generous padding to prevent cutting
+    paddingTop: 40,
     paddingBottom: 40,
   },
   center: {
@@ -283,6 +328,7 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: 32,
   },
   statBox: {
     backgroundColor: '#161b22',
@@ -304,5 +350,70 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: '#ffffff',
+  },
+  historySection: {
+    marginTop: 8,
+  },
+  sectionTitle: {
+    color: '#8b949e',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    letterSpacing: 1.5,
+  },
+  commitRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#161b22',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#30363d',
+  },
+  commitInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  repoName: {
+    color: '#f1e05a',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  commitMessage: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  commitMeta: {
+    alignItems: 'flex-end',
+  },
+  commitDate: {
+    color: '#8b949e',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  commitSha: {
+    color: '#30363d',
+    fontSize: 10,
+    fontFamily: 'Courier',
+    fontWeight: 'bold',
+  },
+  emptyHistory: {
+    backgroundColor: '#161b22',
+    padding: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderDashOffset: 4,
+    borderColor: '#30363d',
+  },
+  emptyText: {
+    color: '#8b949e',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
