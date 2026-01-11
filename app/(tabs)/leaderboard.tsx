@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, Text } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, Text, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications';
 
 export default function LeaderboardScreen() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function LeaderboardScreen() {
   const [myUsername, setMyUsername] = useState<string | null>(null);
   const [friends, setFriends] = useState<any[]>([]);
   const [friendUsername, setFriendUsername] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadInitialData();
@@ -81,17 +83,43 @@ export default function LeaderboardScreen() {
       const storedFriends = await AsyncStorage.getItem(`friends_${username}`);
       const friendList = storedFriends ? JSON.parse(storedFriends) : [];
       
+      // Fetch my stats first to compare for reminders
+      const myCalendar = await fetchContributionCalendar(accessToken, username);
+      const now = new Date();
+      const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      
+      const myAllDays = myCalendar?.weeks.flatMap((w: any) => w.contributionDays) || [];
+      const myTodayObj = myAllDays.find((d: any) => d.date === todayStr);
+      const myTodayCount = myTodayObj?.contributionCount || 0;
+
       const friendData = await Promise.all(
         friendList.map(async (name: string) => {
           const calendar = await fetchContributionCalendar(accessToken, name);
           if (calendar) {
             const allDays = calendar.weeks.flatMap((w: any) => w.contributionDays).reverse();
             let streak = 0;
-            const todayStr = new Date().toISOString().split('T')[0];
+            
+            // Streak Logic
             for (const day of allDays) {
               if (day.contributionCount > 0) streak++;
               else if (day.date !== todayStr) break;
             }
+
+            // Social Reminder Logic
+            const friendTodayObj = allDays.find((d: any) => d.date === todayStr);
+            const friendTodayCount = friendTodayObj?.contributionCount || 0;
+
+            if (friendTodayCount > 0 && myTodayCount === 0) {
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title: "👀 Don't let them win!",
+                  body: `${name} just pushed code! Get a commit in to save your streak.`,
+                  sound: true,
+                },
+                trigger: null,
+              });
+            }
+
             return { username: name, streak, total: calendar.totalContributions };
           }
           return null;
@@ -134,6 +162,22 @@ export default function LeaderboardScreen() {
     }
   };
 
+  const shareApp = async () => {
+    try {
+      await Share.share({
+        message: `Yo! Get on Git Streaks and track your GitHub momentum with me. Download it here: https://github.com/drewmanley16/GitStreaks`,
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const filteredFriends = useMemo(() => {
+    return friends.filter(f => 
+      f.username.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [friends, searchQuery]);
+
   if (isLoading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -143,16 +187,19 @@ export default function LeaderboardScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.contentContainer}>
         <View style={styles.header}>
           <Text style={styles.title}>Leaderboard</Text>
+          <TouchableOpacity onPress={shareApp} style={styles.inviteButton}>
+            <Text style={styles.inviteButtonText}>Invite Friends</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.addSection}>
           <TextInput
             style={styles.input}
-            placeholder="GitHub username"
+            placeholder="Add friend by GitHub username"
             placeholderTextColor="#8b949e"
             value={friendUsername}
             onChangeText={setFriendUsername}
@@ -163,8 +210,19 @@ export default function LeaderboardScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.searchSection}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search friends..."
+            placeholderTextColor="#8b949e"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+          />
+        </View>
+
         <View style={styles.list}>
-          {friends.map((friend, index) => (
+          {filteredFriends.map((friend, index) => (
             <View key={friend.username} style={styles.row}>
               <Text style={styles.rank}>{index + 1}</Text>
               <Text style={styles.name}>{friend.username}</Text>
@@ -172,6 +230,10 @@ export default function LeaderboardScreen() {
             </View>
           ))}
           
+          {filteredFriends.length === 0 && friends.length > 0 && (
+            <Text style={styles.emptyText}>No friends matching "{searchQuery}"</Text>
+          )}
+
           {friends.length === 0 && (
             <Text style={styles.emptyText}>No friends added yet.</Text>
           )}
@@ -198,12 +260,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#0d1117',
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 30,
   },
   title: {
     color: '#ffffff',
     fontSize: 28,
     fontWeight: 'bold',
+  },
+  inviteButton: {
+    backgroundColor: '#30363d',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#444c56',
+  },
+  inviteButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   addSection: {
     flexDirection: 'row',
@@ -212,7 +290,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#30363d',
     padding: 6,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   input: {
     flex: 1,
@@ -230,6 +308,19 @@ const styles = StyleSheet.create({
     color: '#0d1117',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  searchSection: {
+    marginBottom: 24,
+  },
+  searchInput: {
+    backgroundColor: '#0d1117',
+    borderWidth: 1,
+    borderColor: '#30363d',
+    borderRadius: 12,
+    color: '#ffffff',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 14,
   },
   list: {
     backgroundColor: '#161b22',
