@@ -1,10 +1,10 @@
+import { Logo } from '@/components/Logo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { exchangeCodeAsync, makeRedirectUri, useAuthRequest } from 'expo-auth-session';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as React from 'react';
-import { ActivityIndicator, StyleSheet, TouchableOpacity, View, Text } from 'react-native';
-import { Logo } from '@/components/Logo';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 WebBrowser.maybeCompleteAuthSession();
 
