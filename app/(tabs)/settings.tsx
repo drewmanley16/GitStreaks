@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View, Text, ActivityIndicator } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View, Text, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ACHIEVEMENTS } from '@/constants/achievements';
+import * as Notifications from 'expo-notifications';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -113,6 +114,22 @@ export default function SettingsScreen() {
     }
   };
 
+  const testNotification = async () => {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "🚀 Test Success!",
+          body: "Push notifications are working perfectly.",
+          sound: true,
+        },
+        trigger: null, // Send immediately
+      });
+      Alert.alert("Sent", "Check your phone for the notification!");
+    } catch (e) {
+      Alert.alert("Error", "Could not send notification. Check permissions in your device settings.");
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -162,9 +179,15 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ACCOUNT</Text>
+          <Text style={styles.sectionTitle}>SYSTEM</Text>
           <View style={styles.card}>
             <View style={styles.row}>
+              <Text style={styles.label}>Test Notification</Text>
+              <TouchableOpacity onPress={testNotification}>
+                <Text style={styles.testText}>Send Test</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={[styles.row, { borderTopWidth: 1, borderTopColor: '#30363d' }]}>
               <Text style={styles.label}>Logout from GitHub</Text>
               <TouchableOpacity onPress={handleLogout}>
                 <Text style={styles.logoutText}>Log out</Text>
@@ -303,6 +326,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '500',
+  },
+  testText: {
+    color: '#f1e05a',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   logoutText: {
     color: '#ff7b72',
