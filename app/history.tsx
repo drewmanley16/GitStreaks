@@ -8,7 +8,7 @@ export default function FullHistoryScreen() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [commits, setCommits] = useState<any[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
 
   const fetchFullHistory = async () => {
     try {
@@ -20,8 +20,8 @@ export default function FullHistoryScreen() {
         return;
       }
 
-      const searchResponse = await fetch(
-        `https://api.github.com/search/commits?q=author:${username}&sort=author-date&order=desc&per_page=50`, 
+      const eventsResponse = await fetch(
+        `https://api.github.com/users/${username}/events?per_page=100`, 
         {
           headers: { 
             Authorization: `Bearer ${accessToken}`,
@@ -29,20 +29,42 @@ export default function FullHistoryScreen() {
           },
         }
       );
-      const searchData = await searchResponse.json();
+      const eventsData = await eventsResponse.json();
       
-      if (searchData.items && Array.isArray(searchData.items)) {
-        const fullCommits = searchData.items.map((item: any) => ({
-          repo: item.repository.name,
-          message: item.commit.message,
-          date: new Date(item.commit.author.date).toLocaleDateString(undefined, { 
-            month: 'short', 
-            day: 'numeric',
-            year: 'numeric'
-          }),
-          sha: item.sha.substring(0, 7)
-        }));
-        setCommits(fullCommits);
+      if (Array.isArray(eventsData)) {
+        const fullHistory = eventsData.map((event: any) => {
+          let typeLabel = event.type.replace('Event', '');
+          let message = '';
+          let repo = event.repo.name.split('/')[1] || event.repo.name;
+
+          if (event.type === 'PushEvent') {
+            const commitCount = event.payload.commits?.length || 0;
+            message = `Pushed ${commitCount} commit${commitCount !== 1 ? 's' : ''}`;
+          } else if (event.type === 'PullRequestEvent') {
+            message = `${event.payload.action.charAt(0).toUpperCase() + event.payload.action.slice(1)} PR #${event.payload.pull_request.number}`;
+          } else if (event.type === 'IssuesEvent') {
+            message = `${event.payload.action.charAt(0).toUpperCase() + event.payload.action.slice(1)} Issue #${event.payload.issue.number}`;
+          } else if (event.type === 'PullRequestReviewEvent') {
+            message = `Reviewed PR #${event.payload.pull_request.number}`;
+          } else if (event.type === 'CreateEvent') {
+            message = `Created ${event.payload.ref_type} ${event.payload.ref || ''}`;
+          } else {
+            message = `Activity in ${repo}`;
+          }
+
+          return {
+            repo,
+            message,
+            type: typeLabel,
+            date: new Date(event.created_at).toLocaleDateString(undefined, { 
+              month: 'short', 
+              day: 'numeric',
+              year: 'numeric'
+            }),
+            id: event.id
+          };
+        });
+        setHistory(fullHistory);
       }
     } catch (error) {
       console.error('DEBUG: Fetch History Error', error);
@@ -75,7 +97,7 @@ export default function FullHistoryScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Full History</Text>
+        <Text style={styles.title}>Activity History</Text>
       </View>
 
       <ScrollView 
@@ -85,22 +107,22 @@ export default function FullHistoryScreen() {
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor="#f1e05a" />
         }
       >
-        {commits.length > 0 ? (
-          commits.map((commit, index) => (
-            <View key={`${commit.sha}-${index}`} style={styles.commitRow}>
-              <View style={styles.commitInfo}>
-                <Text style={styles.repoName}>{commit.repo}</Text>
-                <Text style={styles.commitMessage}>{commit.message}</Text>
+        {history.length > 0 ? (
+          history.map((item, index) => (
+            <View key={`${item.id}-${index}`} style={styles.row}>
+              <View style={styles.info}>
+                <Text style={styles.repoName}>{item.repo}</Text>
+                <Text style={styles.message}>{item.message}</Text>
               </View>
-              <View style={styles.commitMeta}>
-                <Text style={styles.commitDate}>{commit.date}</Text>
-                <Text style={styles.commitSha}>{commit.sha}</Text>
+              <View style={styles.meta}>
+                <Text style={styles.date}>{item.date}</Text>
+                <Text style={styles.type}>{item.type}</Text>
               </View>
             </View>
           ))
         ) : (
-          <View style={styles.emptyHistory}>
-            <Text style={styles.emptyText}>No commit activity found.</Text>
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>No activity found.</Text>
           </View>
         )}
       </ScrollView>
@@ -142,7 +164,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
   },
-  commitRow: {
+  row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -153,7 +175,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#30363d',
   },
-  commitInfo: {
+  info: {
     flex: 1,
     marginRight: 16,
   },
@@ -163,27 +185,28 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 4,
   },
-  commitMessage: {
+  message: {
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '500',
   },
-  commitMeta: {
+  meta: {
     alignItems: 'flex-end',
   },
-  commitDate: {
+  date: {
     color: '#8b949e',
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 4,
   },
-  commitSha: {
+  type: {
     color: '#30363d',
-    fontSize: 10,
-    fontFamily: 'Courier',
+    fontSize: 9,
     fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  emptyHistory: {
+  empty: {
     backgroundColor: '#161b22',
     padding: 32,
     borderRadius: 12,
@@ -197,4 +220,3 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
-

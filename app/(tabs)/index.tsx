@@ -84,9 +84,9 @@ export default function HomeScreen() {
       const gqlData = await gqlResponse.json();
       const calendar = gqlData.data?.user?.contributionsCollection?.contributionCalendar;
 
-      // Fetch Recent Commit History (Search API for real commit data across ALL branches)
-      const searchResponse = await fetch(
-        `https://api.github.com/search/commits?q=author:${userData.login}&sort=author-date&order=desc`, 
+      // Fetch Live User Activity (Captures EVERYTHING: Pushes, PRs, Issues, Reviews)
+      const eventsResponse = await fetch(
+        `https://api.github.com/users/${userData.login}/events`, 
         {
           headers: { 
             Authorization: `Bearer ${accessToken}`,
@@ -94,22 +94,44 @@ export default function HomeScreen() {
           },
         }
       );
-      const searchData = await searchResponse.json();
-      const liveCommits = searchData.items || [];
+      const eventsData = await eventsResponse.json();
+      const liveEvents = Array.isArray(eventsData) ? eventsData : [];
 
       if (calendar) {
-        const processed = processStats(calendar, liveCommits);
+        const processed = processStats(calendar, liveEvents);
         setCalendarDays(processed.slice(-21));
       }
       
-      if (liveCommits.length > 0) {
-        const commits = liveCommits.map((item: any) => ({
-          repo: item.repository.name,
-          message: item.commit.message,
-          date: new Date(item.commit.author.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-          sha: item.sha.substring(0, 7)
-        })).slice(0, 10);
-        setRecentCommits(commits);
+      if (liveEvents.length > 0) {
+        const history = liveEvents.map((event: any) => {
+          let typeLabel = event.type.replace('Event', '');
+          let message = '';
+          let repo = event.repo.name.split('/')[1] || event.repo.name;
+
+          if (event.type === 'PushEvent') {
+            const commitCount = event.payload.commits?.length || 0;
+            message = `Pushed ${commitCount} commit${commitCount !== 1 ? 's' : ''}`;
+          } else if (event.type === 'PullRequestEvent') {
+            message = `${event.payload.action.charAt(0).toUpperCase() + event.payload.action.slice(1)} PR #${event.payload.pull_request.number}`;
+          } else if (event.type === 'IssuesEvent') {
+            message = `${event.payload.action.charAt(0).toUpperCase() + event.payload.action.slice(1)} Issue #${event.payload.issue.number}`;
+          } else if (event.type === 'PullRequestReviewEvent') {
+            message = `Reviewed PR #${event.payload.pull_request.number}`;
+          } else if (event.type === 'CreateEvent') {
+            message = `Created ${event.payload.ref_type} ${event.payload.ref || ''}`;
+          } else {
+            message = `Activity in ${repo}`;
+          }
+
+          return {
+            repo,
+            message,
+            type: typeLabel,
+            date: new Date(event.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+            id: event.id
+          };
+        }).slice(0, 10);
+        setRecentCommits(history); // Reusing the state name for simplicity, but it's now history
       } else {
         setRecentCommits([]);
       }
@@ -119,19 +141,29 @@ export default function HomeScreen() {
     }
   };
 
-  const processStats = (calendar: any, liveCommits: any[]) => {
+  const processStats = (calendar: any, liveEvents: any[]) => {
     const allDays = calendar.weeks.flatMap((w: any) => w.contributionDays);
     const now = new Date();
     const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     
-    // Map live commits to dates
+    // Map live events to dates
     const liveMap: Record<string, number> = {};
-    liveCommits.forEach((c: any) => {
-      const d = new Date(c.commit.author.date).toISOString().split('T')[0];
-      liveMap[d] = (liveMap[d] || 0) + 1;
+    liveEvents.forEach((event: any) => {
+      const d = new Date(event.created_at).toISOString().split('T')[0];
+      
+      if (event.type === 'PushEvent') {
+        const commitCount = event.payload.commits?.length || 0;
+        liveMap[d] = (liveMap[d] || 0) + commitCount;
+      } else {
+        // We count PRs, Issues, and Reviews as 1 contribution each
+        const validTypes = ['PullRequestEvent', 'IssuesEvent', 'PullRequestReviewEvent', 'CreateEvent'];
+        if (validTypes.includes(event.type)) {
+          liveMap[d] = (liveMap[d] || 0) + 1;
+        }
+      }
     });
 
-    // Merge official stats with live commit data
+    // Merge official stats with live event data
     const mergedDays = allDays.map((day: any) => {
       const liveCount = liveMap[day.date] || 0;
       return {
@@ -278,15 +310,15 @@ export default function HomeScreen() {
             )}
           </View>
           {recentCommits.length > 0 ? (
-            recentCommits.map((commit, index) => (
-              <View key={`${commit.sha}-${index}`} style={styles.commitRow}>
+            recentCommits.map((item, index) => (
+              <View key={`${item.id}-${index}`} style={styles.commitRow}>
                 <View style={styles.commitInfo}>
-                  <Text style={styles.repoName}>{commit.repo}</Text>
-                  <Text style={styles.commitMessage} numberOfLines={1}>{commit.message}</Text>
+                  <Text style={styles.repoName}>{item.repo}</Text>
+                  <Text style={styles.commitMessage} numberOfLines={1}>{item.message}</Text>
                 </View>
                 <View style={styles.commitMeta}>
-                  <Text style={styles.commitDate}>{commit.date}</Text>
-                  <Text style={styles.commitSha}>{commit.sha}</Text>
+                  <Text style={styles.commitDate}>{item.date}</Text>
+                  <Text style={styles.commitType}>{item.type}</Text>
                 </View>
               </View>
             ))
@@ -466,11 +498,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 4,
   },
-  commitSha: {
+  commitType: {
     color: '#30363d',
-    fontSize: 10,
-    fontFamily: 'Courier',
+    fontSize: 9,
     fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   emptyHistory: {
     backgroundColor: '#161b22',
