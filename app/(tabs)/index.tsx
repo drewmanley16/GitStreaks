@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState, useCallback } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View, RefreshControl, Text } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View, RefreshControl, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { registerForPushNotificationsAsync, scheduleDailyReminder } from '@/hooks/useNotifications';
 import * as Notifications from 'expo-notifications';
+import { Logo } from '@/components/Logo';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -202,7 +203,7 @@ export default function HomeScreen() {
         }
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Activity</Text>
+          <Logo size={32} />
           <Text style={styles.subGreeting}>Live Developer Dashboard</Text>
         </View>
         
@@ -248,9 +249,15 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Recent Commits Section */}
         <View style={styles.historySection}>
-          <Text style={styles.sectionTitle}>RECENT HISTORY</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>RECENT HISTORY</Text>
+            {recentCommits.length > 0 && (
+              <TouchableOpacity onPress={() => router.push('/history')}>
+                <Text style={styles.seeMoreText}>See More</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           {recentCommits.length > 0 ? (
             recentCommits.map((commit, index) => (
               <View key={`${commit.sha}-${index}`} style={styles.commitRow}>
@@ -387,12 +394,22 @@ const styles = StyleSheet.create({
   historySection: {
     marginTop: 8,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   sectionTitle: {
     color: '#8b949e',
     fontSize: 12,
     fontWeight: 'bold',
-    marginBottom: 16,
     letterSpacing: 1.5,
+  },
+  seeMoreText: {
+    color: '#f1e05a',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   commitRow: {
     flexDirection: 'row',
